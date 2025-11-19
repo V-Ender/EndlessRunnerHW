@@ -1,47 +1,59 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerMovement : MonoBehaviour
 {
-    public float forwardSpeed = 8f;     
-    public float horizontalSpeed = 6f;
-    public float dashDistance = 1f;  
-    public float leftLimit = -4f;       
-    public float rightLimit = 4f;       
-    
-    public float deathY = -3f; 
-    public GameObject fadeOut; 
-    private bool isDead = false;
-    public DeathSoundPlayer deathSound;
+    [SerializeField] private float forwardSpeed = 8f;
+    [SerializeField] private float horizontalSpeed = 6f;
+    [SerializeField] private float leftLimit = -4f;
+    [SerializeField] private float rightLimit = 4f;
 
-    public float jumpForce = 7f;  
+    [SerializeField] private float deathY = -3f;
+    [SerializeField] private GameObject fadeOut;
+    [SerializeField] private DeathSoundPlayer deathSound;
+
+    [SerializeField] private float jumpForce = 7f;
+
+    private bool isDead = false;
     private bool isGrounded = true;
     private bool jumpRequest = false;
 
     private Rigidbody rb;
-    private int prev_score = 0;
+    private int prevScore = 0;
 
-    void Start()
+    public bool IsDead => isDead;
+    public float ForwardSpeed
+    {
+        get => forwardSpeed;
+        set => forwardSpeed = Mathf.Max(0, value);
+    }
+    public float HorizontalSpeed
+    {
+        get => horizontalSpeed;
+        set => horizontalSpeed = Mathf.Max(0, value);
+    }
+
+    private void Start()
     {
         MasterInfo.score = 0;
         MasterInfo.gemCount = 0;
+
         rb = GetComponent<Rigidbody>();
-        rb.freezeRotation = true;  
+        rb.freezeRotation = true;
         rb.useGravity = true;
         rb.isKinematic = false;
     }
 
-    void Update()
+    private void Update()
     {
         if (Keyboard.current.spaceKey.wasPressedThisFrame)
             jumpRequest = true;
     }
 
-    void FixedUpdate()
+    private void FixedUpdate()
     {
         if (isDead) return;
 
@@ -54,31 +66,27 @@ public class PlayerMovement : MonoBehaviour
         CheckGrounded();
         if (jumpRequest && isGrounded)
         {
-            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
+            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z); // сброс вертикальной скорости
             rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
             jumpRequest = false;
         }
-
-        Vector3 forwardVelocity = Vector3.forward * forwardSpeed;
 
         float horizontalInput = 0f;
         if (Keyboard.current.aKey.isPressed) horizontalInput = -1f;
         if (Keyboard.current.dKey.isPressed) horizontalInput = 1f;
 
-        float newX = Mathf.Clamp(rb.position.x + horizontalInput * horizontalSpeed * Time.fixedDeltaTime,
-                                 leftLimit, rightLimit);
+        float newX = Mathf.Clamp(
+            rb.position.x + horizontalInput * horizontalSpeed * Time.fixedDeltaTime,
+            leftLimit, rightLimit
+        );
 
         rb.MovePosition(new Vector3(newX, rb.position.y, rb.position.z + forwardSpeed * Time.fixedDeltaTime));
-        if ((int)rb.position.z > prev_score) {
-            prev_score = (int)rb.position.z;
+
+        if ((int)rb.position.z > prevScore)
+        {
+            prevScore = (int)rb.position.z;
             MasterInfo.score += 1;
         }
-    }
-
-    void Dash(float distance)
-    {
-        float newX = Mathf.Clamp(rb.position.x + distance, leftLimit, rightLimit);
-        rb.MovePosition(new Vector3(newX, rb.position.y, rb.position.z));
     }
 
     public void Die()
@@ -89,7 +97,7 @@ public class PlayerMovement : MonoBehaviour
         SaveManager.SaveHighScore(MasterInfo.score);
         SaveManager.AddGems(MasterInfo.gemCount);
 
-        if (deathSound != null) deathSound.PlayDeathSound();
+        deathSound?.PlayDeathSound();
 
         rb.linearVelocity = Vector3.zero;
         rb.isKinematic = true;
@@ -100,8 +108,21 @@ public class PlayerMovement : MonoBehaviour
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
+        CreateShards();
+
+        StartCoroutine(DeathRoutine());
+    }
+
+    private void CheckGrounded()
+    {
+        isGrounded = Physics.Raycast(transform.position, Vector3.down, 0.6f);
+    }
+
+    private void CreateShards()
+    {
         int rows = 3;
         float spacing = 0.2f;
+
         for (int x = 0; x < rows; x++)
         {
             for (int y = 0; y < rows; y++)
@@ -118,17 +139,11 @@ public class PlayerMovement : MonoBehaviour
                     shard.transform.position = pos;
                     shard.transform.localScale = Vector3.one * 0.2f;
 
-                    Rigidbody rb = shard.AddComponent<Rigidbody>();
-                    rb.AddExplosionForce(200f, transform.position, 2f);
+                    Rigidbody shardRb = shard.AddComponent<Rigidbody>();
+                    shardRb.AddExplosionForce(200f, transform.position, 2f);
                 }
             }
         }
-        StartCoroutine(DeathRoutine());
-    }
-
-    void CheckGrounded()
-    {
-        isGrounded = Physics.Raycast(transform.position, Vector3.down, 0.6f);
     }
 
     private IEnumerator DeathRoutine()
